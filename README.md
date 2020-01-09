@@ -1,3 +1,4 @@
-# ELS - Enterprise Linux/EuroLinux Sources - coolkey 
+# ELS - Enterprise Linux/EuroLinux Sources - coolkey
+ 
 ## Usage:
-  Checkout branch or tag.
+  Checkout branch or tag. Use `make sources` to recreate  SOURCE0 archive.
