@@ -22,10 +22,10 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 40%{?dist}
+Release: 35%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
-URL: https://github.com/dogtagpki/coolkey/tree/redhat
+URL: http://directory.fedora.redhat.com/wiki/CoolKey
 Source: coolkey-%{version}.tar.gz
 Source1: coolkey.module
 Patch1: coolkey-cache-dir-move.patch
@@ -45,10 +45,6 @@ Patch23: coolkey-1.1.0-p15-coverity.patch
 Patch24: coolkey-1.1.0-more-keys.patch
 Patch25: coolkey-1.1.0-fail-on-bad-mechanisms.patch
 Patch26: coolkey-1.1.0-max-cpu-bug.patch
-Patch27: coolkey-1.1.0-rhel7-alt-cac.patch
-Patch28: coolkey-1.1.0-cardos-5-3.patch
-Patch29: coolkey-1.1.0-alt-tokens-2.patch
-
 
 Group: System Environment/Libraries
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -56,7 +52,6 @@ BuildRequires: autoconf
 BuildRequires: pcsc-lite-devel
 BuildRequires: zlib-devel
 BuildRequires: nss-devel
-BuildRequires: gcc-c++
 Requires: nss-tools
 Requires: pcsc-lite 
 Requires: pcsc-lite-libs
@@ -97,9 +92,6 @@ Linux Driver support to access the CoolKey applet.
 %patch24 -b .more-keys
 %patch25 -b .fail-on-bad-mechanisms
 %patch26 -b .max-cpu-bug
-%patch27 -b .alt-cac
-%patch28 -b .cardos-5-3
-%patch29 -b .alt-tokens-2
 
 %build
 autoconf
@@ -158,23 +150,6 @@ fi
 
 
 %changelog
-* Mon Aug 6 2018 Robert Relyea <rrelyea@redhat.com> - 1.1.0-40
-- fix regression in token removal created by the cac alt tokens patch.
-
-* Thu Jun 21 2018 Robert Relyea <rrelyea@redhat.com> - 1.1.0-39
-- add c++ compiler to the dependencies.
-- update URL to point to the github for coolkey
-
-* Fri Apr 20 2018 Robert Relyea <rrelyea@redhat.com> - 1.1.0-38
-- support cac alt tokens which don't have a cert is slot 0, don't have
-  a CCC, and uses a ACA.
-
-* Tue Mar 14 2017 Robert Relyea <rrelyea@redhat.com> - 1.1.0-37
-- get Cardos 5.3 cards working properly
-
-* Thu Dec 1 2016 Robert Relyea <rrelyea@redhat.com> - 1.1.0-36
-- recognize up to 10 cac and PIV certs rather than 3
-
 * Thu Jun 30 2016 Robert Relyea <rrelyea@redhat.com> - 1.1.0-35
 - include sleep on unknown reader errors.
 
