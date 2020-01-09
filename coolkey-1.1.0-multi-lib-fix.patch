@@ -1,0 +1,23 @@
+diff -up ./src/coolkey/slot.cpp.multi-lib-fix ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.multi-lib-fix	2018-02-08 11:32:06.493071992 -0800
++++ ./src/coolkey/slot.cpp	2018-02-08 11:35:02.974853542 -0800
+@@ -1860,12 +1860,17 @@ SlotMemSegment::SlotMemSegment(const cha
+    bool needInit;
+    char *segName;
+ 
+-   segName = new char[strlen(readerName)+sizeof(SEGMENT_PREFIX)+1];
++   // +2 '.' and '-', +1 NULL
++   segName = new char[strlen(readerName)+sizeof(size_t)*2+2
++		      +sizeof(SEGMENT_PREFIX)+1];
+    if (!segName) {
+ 	// just run without shared memory
+ 	return;
+     }
+-    sprintf(segName,SEGMENT_PREFIX"%s",readerName); 
++    // simple fix for multi-lib. keep a different cache for different
++    // segment sizes, so if object sizes vary from lib to lib,
++    sprintf(segName,SEGMENT_PREFIX".%x-%s",sizeof(SlotSegmentHeader),
++							readerName); 
+     segment = SHMem::initSegment(segName, MAX_OBJECT_STORE_SIZE, needInit);
+     delete [] segName;
+     if (!segment) {

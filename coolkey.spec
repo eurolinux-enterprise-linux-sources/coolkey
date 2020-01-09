@@ -23,7 +23,7 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 39%{?dist}
+Release: 40%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
 URL: http://directory.fedora.redhat.com/wiki/CoolKey
@@ -55,6 +55,7 @@ Patch24: coolkey-1.1.0-hp-fix.patch
 Patch25: coolkey-1.1.0-alt-cac-2.patch
 Patch26: coolkey-1.1.0-move-cache.patch
 Patch27: coolkey-1.1.0-hp-fix-2.patch 
+Patch28: coolkey-1.1.0-multi-lib-fix.patch
 
 Group: System Environment/Libraries
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -110,6 +111,7 @@ Linux Driver support to access the CoolKey applet.
 %patch25 -b .alt_cac_2
 %patch26 -b .move_cache
 %patch27 -b .hp_fix_2
+%patch28 -b .multi-lib-fix
 
 %build
 autoconf
@@ -165,6 +167,9 @@ fi
 
 
 %changelog
+* Thu Feb 8 2018 Bob Relyea <rrelyea@redhat.com> - 1.1.0-40
+- fix crash when using coolkey with multi-libs on the same machine
+
 * Wed Dec 7 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-39
 - fix hang when using hp keyboard with CAC and coolkey cards
 
