@@ -22,7 +22,7 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 36%{?dist}
+Release: 37.51%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
 URL: http://directory.fedora.redhat.com/wiki/CoolKey
@@ -46,6 +46,8 @@ Patch24: coolkey-1.1.0-more-keys.patch
 Patch25: coolkey-1.1.0-fail-on-bad-mechanisms.patch
 Patch26: coolkey-1.1.0-max-cpu-bug.patch
 Patch27: coolkey-1.1.0-rhel7-alt-cac.patch
+Patch28: coolkey-1.1.0-cardos-5-3.patch
+Patch29: coolkey-1.1.0-alt-tokens-2.patch
 
 
 Group: System Environment/Libraries
@@ -95,6 +97,8 @@ Linux Driver support to access the CoolKey applet.
 %patch25 -b .fail-on-bad-mechanisms
 %patch26 -b .max-cpu-bug
 %patch27 -b .alt-cac
+%patch28 -b .cardos-5-3
+%patch29 -b .alt-tokens-2
 
 %build
 autoconf
@@ -153,6 +157,17 @@ fi
 
 
 %changelog
+* Mon Jun 25 2018 Robert Relyea <rrelyea@redhat.com> - 1.1.0-37.51
+- Fix regression in alt token patch that prevented blank cards from working
+  in ESC.
+
+* Mon Apr 23 2018 Robert Relyea <rrelyea@redhat.com> - 1.1.0-37.50
+- support cac alt tokens which don't have a cert is slot 0, don't have
+  a CCC, and uses a ACA.
+
+* Tue Mar 14 2017 Robert Relyea <rrelyea@redhat.com> - 1.1.0-37
+- get Cardos 5.3 cards working properly
+
 * Thu Dec 1 2016 Robert Relyea <rrelyea@redhat.com> - 1.1.0-36
 - recognize up to 10 cac and PIV certs rather than 3
 

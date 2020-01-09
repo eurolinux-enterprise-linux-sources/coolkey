@@ -1,0 +1,141 @@
+diff -up ./src/coolkey/slot.cpp.alt-tokens-2 ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.alt-tokens-2	2018-06-25 17:58:23.472185284 -0700
++++ ./src/coolkey/slot.cpp	2018-06-25 18:02:29.714918126 -0700
+@@ -415,8 +415,9 @@ Slot::Slot(const char *readerName_, Log
+ 	tokenManufacturer(NULL),
+ 	slotInfoFound(false), context(context_), conn(NULL), state(UNKNOWN), 
+ 	isVersion1Key(false), needLogin(false), fullTokenName(false), 
+-	mCoolkey(false), mOldCAC(false), mCACLocalLogin(false),
+-	pivContainer(-1), pivKey(-1), maxCacCerts(MAX_CERT_SLOTS), 
++	mCoolkey(false), mOldCAC(false), mCACLocalLogin(false), mCAC_ACA(false),
++	pivContainer(-1), pivKey(-1),
++	minCacCerts(0), maxCacCerts(MAX_CERT_SLOTS),
+ 	algs(ALG_NONE), p15aid(0), p15odfAddr(0), p15tokenInfoAddr(0),
+ 	p15Instance(0),
+ #ifdef USE_SHMEM
+@@ -782,9 +783,11 @@ Slot::connectToToken()
+ 	 state |= PIV_CARD | APPLET_SELECTABLE | APPLET_PERSONALIZED;
+ 	 isVersion1Key = 0;
+ 	 needLogin = true;
++	 minCacCerts = 0;
+ 	 maxCacCerts = MAX_CERT_SLOTS;
+          mCoolkey = 0;
+ 	 mOldCAC = 0;
++	 mCAC_ACA = 0;
+ 	 mCACLocalLogin = getPIVLoginType();
+ 	return;
+     } 
+@@ -924,23 +927,29 @@ Slot::getCACAid()
+ 	CKYBuffer_Resize(&cardAID[i],0);
+     }
+ 
++    mCAC_ACA=false;
+     status = CACApplet_SelectCCC(conn,NULL);
+     if (status != CKYSUCCESS) {
+ 	/* are we an old CAC */
+-	status = CACApplet_SelectPKI(conn, &cardAID[0], 0, NULL);
+-	if (status != CKYSUCCESS) {
+-	   /* no, just fail */
+-	   return status;
+-	}
+-	/* yes, fill in the old applets */
+-	mOldCAC = true;
+-	maxCacCerts = 1;
+-	for (i=1; i< MAX_CERT_SLOTS; i++) {
++	maxCacCerts = 0;
++	minCacCerts = -1;
++        status = CACApplet_SelectACA(conn,NULL);
++        if (status == CKYSUCCESS) {
++	    mCAC_ACA = true;
++        }
++	for (i=0; i< MAX_CERT_SLOTS; i++) {
+ 	    status = CACApplet_SelectPKI(conn, &cardAID[i], i, NULL);
+ 	    if (status == CKYSUCCESS) {
++		if (minCacCerts == -1) {
++		    minCacCerts = i;
++                }
+ 		maxCacCerts = i+1;
+ 	    }
+ 	}
++	if (minCacCerts == -1) {
++	    return status;
++        }
++	mOldCAC = true;
+ 	return CKYSUCCESS;
+     }
+     /* definately not an old CAC */
+@@ -997,6 +1006,7 @@ Slot::getCACAid()
+     if (certSlot == 0) {
+ 	status = CKYAPDUFAIL; /* probably neeed a beter error code */
+     }
++    minCacCerts = 0;
+     maxCacCerts = certSlot;
+ 
+ done:
+@@ -3840,7 +3850,16 @@ Slot::login(SessionHandleSuffix handleSu
+     if(status != CKYSUCCESS ) handleConnectionError();
+ 
+     if (state & GOV_CARD) {
+-	selectCACApplet(0, true);
++	if (mCAC_ACA) {
++            status = CACApplet_SelectACA(conn,NULL);
++	    if ( status == CKYSCARDERR ) handleConnectionError();
++	    if ( status != CKYSUCCESS) {
++		disconnect();
++        	throw PKCS11Exception(CKR_DEVICE_REMOVED);
++	    }
++	} else {
++	    selectCACApplet(minCacCerts, true);
++	}
+     } else if ((state & P15_CARD)== 0) {
+ 	/* p15 does the select in attemptLogin */
+ 	selectApplet();
+diff -up ./src/coolkey/slot.h.alt-tokens-2 ./src/coolkey/slot.h
+--- ./src/coolkey/slot.h.alt-tokens-2	2018-06-25 17:58:23.473185283 -0700
++++ ./src/coolkey/slot.h	2018-06-25 17:58:23.475185280 -0700
+@@ -356,8 +356,10 @@ class Slot {
+     bool mCoolkey;
+     bool mOldCAC;
+     bool mCACLocalLogin;
++    bool mCAC_ACA;
+     int pivContainer;
+     int pivKey;
++    int minCacCerts;
+     int maxCacCerts;
+     SlotAlgs algs;
+     unsigned short p15aid;
+diff -up ./src/libckyapplet/cky_applet.c.alt-tokens-2 ./src/libckyapplet/cky_applet.c
+--- ./src/libckyapplet/cky_applet.c.alt-tokens-2	2018-06-25 17:58:23.473185283 -0700
++++ ./src/libckyapplet/cky_applet.c	2018-06-25 17:58:23.475185280 -0700
+@@ -626,6 +626,19 @@ CACApplet_SelectCCC(CKYCardConnection *c
+     return ret;
+ }
+ 
++static CKYByte cacACAid[] = {0xa0, 0x00, 0x00, 0x00, 0x79, 0x10, 0x00 };
++CKYStatus
++CACApplet_SelectACA(CKYCardConnection *conn, CKYISOStatus *apduRC)
++{
++    CKYStatus ret;
++    CKYBuffer CAC_CM_AID;
++    CKYBuffer_InitFromData(&CAC_CM_AID, cacACAid, sizeof(cacACAid));
++    ret = CKYApplet_HandleAPDU(conn, CKYAppletFactory_SelectFile, &CAC_CM_AID,
++		 NULL, CKY_SIZE_UNKNOWN, CKYAppletFill_Null, NULL, apduRC);
++    CKYBuffer_FreeData(&CAC_CM_AID);
++    return ret;
++}
++
+ CKYStatus
+ CACApplet_SelectFile(CKYCardConnection *conn, unsigned short ef,
+ 						 CKYISOStatus *apduRC)
+diff -up ./src/libckyapplet/cky_applet.h.alt-tokens-2 ./src/libckyapplet/cky_applet.h
+--- ./src/libckyapplet/cky_applet.h.alt-tokens-2	2018-06-25 17:58:23.457185300 -0700
++++ ./src/libckyapplet/cky_applet.h	2018-06-25 17:58:23.475185280 -0700
+@@ -539,6 +539,8 @@ CKYStatus CACApplet_SelectCardManager(CK
+ 							CKYISOStatus *apduRC);
+ /* Select the CAC CC container. Can happen with either applet selected */
+ CKYStatus CACApplet_SelectCCC(CKYCardConnection *conn, CKYISOStatus *apduRC);
++/* Select the CAC ACA container. Can happen with either applet selected */
++CKYStatus CACApplet_SelectACA(CKYCardConnection *conn, CKYISOStatus *apduRC);
+ /* Select an old CAC applet and fill in the cardAID */
+ CKYStatus CACApplet_SelectPKI(CKYCardConnection *conn, CKYBuffer *cardAid,
+ 			      CKYByte instance, CKYISOStatus *apduRC);
