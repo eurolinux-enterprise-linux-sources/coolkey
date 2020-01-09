@@ -1,0 +1,38 @@
+diff -up ./src/coolkey/slot.cpp.arnery_piv ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.arnery_piv	2012-10-01 13:51:50.216301000 -0700
++++ ./src/coolkey/slot.cpp	2012-10-01 13:51:54.654286000 -0700
+@@ -709,22 +709,27 @@ Slot::connectToToken()
+     // see if the applet is selectable
+ 
+     log->log("time connnect: Begin transaction %d ms\n", OSTimeNow() - time);
++    status = PIVApplet_Select(conn, NULL);
++    if (status == CKYSUCCESS) {
++	 /* CARD is a PIV card */
++	 state |= PIV_CARD | APPLET_SELECTABLE | APPLET_PERSONALIZED;
++	 isVersion1Key = 0;
++	 needLogin = 1;
++         mCoolkey = 0;
++	 mOldCAC = 0;
++	 mCACLocalLogin = getPIVLoginType();
++	return;
++    } 
+     status = CKYApplet_SelectCoolKeyManager(conn, NULL);
+     if (status != CKYSUCCESS) {
+         log->log("CoolKey Select failed 0x%x\n", status);
+ 	status = getCACAid();
+ 	if (status != CKYSUCCESS) {
+ 	    log->log("CAC Select failed 0x%x\n", status);
+- 	    status = PIVApplet_Select(conn, NULL);
+-	    if (status != CKYSUCCESS) {
+-		/* end of the line */
+-		log->log("PIV Select failed 0x%x\n", status);
+-		if (status == CKYSCARDERR) {
++	    if (status == CKYSCARDERR) {
+ 		    log->log("Card Failure 0x%x\n",
+ 				CKYCardConnection_GetLastError(conn));
+ 		    disconnect();
+-		}
+-		return;
+ 	    }
+ 	    /* CARD is a PIV card */
+ 	    state |= PIV_CARD | APPLET_SELECTABLE | APPLET_PERSONALIZED;

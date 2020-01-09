@@ -1,0 +1,109 @@
+diff -up ./src/coolkey/object.cpp.mem-over ./src/coolkey/object.cpp
+--- ./src/coolkey/object.cpp.mem-over	2013-08-09 18:03:20.000000000 -0700
++++ ./src/coolkey/object.cpp	2013-08-09 18:04:55.000000000 -0700
+@@ -627,9 +627,15 @@ dataStart(const CKYByte *buf, unsigned i
+     unsigned char tag;
+     unsigned int used_length= 0;
+ 
++    *data_length = 0; /* make sure data_length is zero on failure */
++
+     if(!buf) {
+         return NULL;
+     }
++    /* there must be at least 2 bytes */
++    if (length < 2) {
++	return NULL;
++    }
+ 
+     tag = buf[used_length++];
+ 
+@@ -643,15 +649,22 @@ dataStart(const CKYByte *buf, unsigned i
+     if (*data_length&0x80) {
+         int  len_count = *data_length & 0x7f;
+ 
++	if (len_count+used_length > length) {
++	    return NULL;
++	}
++
+         *data_length = 0;
+ 
+         while (len_count-- > 0) {
+             *data_length = (*data_length << 8) | buf[used_length++];
+         }
+     }
++    /* paranoia, can't happen */
++    if (length < used_length) {
++	return NULL;
++    }
+ 
+     if (*data_length > (length-used_length) ) {
+-        *data_length = length-used_length;
+         return NULL;
+     }
+     if (includeTag) *data_length += used_length;
+@@ -754,6 +767,7 @@ GetKeyAlgorithmId(const CKYByte *spki_da
+ 
+     /* objtain the algorithm id */
+     algorithmId->data = dataStart(buf,buf_length,&algorithmId->len,false);
++    if (algorithmId->data == NULL) return SECFailure;
+ 
+     return SECSuccess;
+ 
+@@ -778,6 +792,10 @@ GetKeyTypeFromSPKI(const CKYBuffer *key)
+     /* Get actual oid buffer */
+ 
+     keyData = dataStart(algIdItem.data,algIdItem.len,&length, false);
++    if (keyData == NULL) {
++        throw PKCS11Exception(CKR_FUNCTION_FAILED,
++            "Failed to decode key algorithm ID.");
++    }
+ 
+     bool match = FALSE;
+     
+@@ -794,14 +812,12 @@ GetKeyTypeFromSPKI(const CKYBuffer *key)
+     if ( match == TRUE ) {
+        foundType = PKCS11Object::rsa;
+     } else { 
++      /* check for ECC */
++       match = GetKeyOIDMatches(keyData, length, eccOID);
+ 
+-    /* check for ECC */
+-
+-      match = GetKeyOIDMatches(keyData, length, eccOID);
+-
+-      if ( match == TRUE ) {
++       if ( match == TRUE ) {
+          foundType = PKCS11Object::ecc;
+-      }
++       }
+ 
+     }
+ 
+@@ -1331,6 +1347,7 @@ GetCN(const CKYByte *dn, unsigned int dn
+ 
+         /* unwrap the set */
+         name = dataStart(buf, buf_length, &name_length, false);
++	if (name == NULL) return SECFailure;
+ 
+         /* advance to next set */
+         buf_length -= (name-buf) + name_length;
+@@ -1338,9 +1355,11 @@ GetCN(const CKYByte *dn, unsigned int dn
+ 
+         /* unwrap the Sequence */
+         name = dataStart(name, name_length, &name_length, false);
++	if (name == NULL) return SECFailure;
+ 
+         /* unwrap the oid */
+         oid = dataStart(name, name_length, &oid_length, false);
++	if (oid == NULL) return SECFailure;
+ 
+         /* test the oid */
+         if (oid_length != CN_LENGTH) {
+@@ -1356,6 +1375,7 @@ GetCN(const CKYByte *dn, unsigned int dn
+ 
+         /* unwrap the CN */
+         cn->data = dataStart(name, name_length, &cn->len, false);
++	if (cn->data == NULL) return SECFailure;
+         return SECSuccess;
+     }
+     return SECFailure;

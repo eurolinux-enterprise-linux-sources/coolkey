@@ -1,0 +1,224 @@
+diff -up ./src/coolkey/slot.cpp.noegate ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.noegate	2013-08-09 17:39:34.000000000 -0700
++++ ./src/coolkey/slot.cpp	2013-08-09 17:41:45.000000000 -0700
+@@ -274,27 +274,10 @@ SlotList::updateReaderList()
+ 	}
+     }
+ 
+-    if (!readerStates) {
++    if (readerStates == NULL && readerNames != NULL) {
+ 	/* fresh Reader State list, just create it */
+ 	readerStates = CKYReader_CreateArray(readerNames, (CKYSize *)&numReaders);
+ 
+-	/* if we have no readers, make sure we have at least one to keep things
+-	 * happy */
+-	if (readerStates == NULL &&
+-			 CKYReaderNameList_GetCount(readerNames) == 0) {
+-	    readerStates = (SCARD_READERSTATE *)
+-				malloc(sizeof(SCARD_READERSTATE));
+-	    if (readerStates) {
+-		CKYReader_Init(readerStates);
+-		status = CKYReader_SetReaderName(readerStates, "E-Gate 0 0");
+-		if (status != CKYSUCCESS) {
+- 		    CKYReader_DestroyArray(readerStates, 1);
+-		    readerStates = NULL;
+-		} else {
+-		    numReaders = 1;
+-		}
+-	    }
+-	}
+ 	CKYReaderNameList_Destroy(readerNames);
+ 	        
+ 	if (readerStates == NULL) {
+@@ -304,6 +287,7 @@ SlotList::updateReaderList()
+ 	return;
+     }
+ 
++
+     /* it would be tempting at this point just to see if we have more readers
+      * then specified previously. The problem with this is it is possible that
+      * some readers have been deleted, so the only way to tell if we have
+@@ -311,27 +295,32 @@ SlotList::updateReaderList()
+      * don't recognize.
+      */
+ 
+-    /* first though, let's check to see if any previously removed readers have 
+-     * come back from the dead. If the ignored bit has been set, we do not need
+-     * it any more.
+-    */
++    /* Iterate through all the readers to see if we need to make unavailable any
++     * freshly removed readers. Also, see if any previously removed
++     * readers have come back from the dead and don't need to be ignored.
++     */
+ 
+     const char *curReaderName = NULL;
+     unsigned long knownState = 0;
+     for(unsigned int ri = 0 ; ri < numReaders; ri ++)  {
+-       
+         knownState = CKYReader_GetKnownState(&readerStates[ri]);
+-        if( !(knownState & SCARD_STATE_IGNORE))  {
+-            continue;
+-        }
+  
+         curReaderName =  CKYReader_GetReaderName(&readerStates[ri]); 
+-        if(readerNameExistsInList(curReaderName,&readerNames)) {
+-            CKYReader_SetKnownState(&readerStates[ri], knownState & ~SCARD_STATE_IGNORE); 
+-                 
+-        }
++        if(readerNames && readerNameExistsInList(curReaderName,&readerNames)) {
++            CKYReader_SetKnownState(&readerStates[ri], 
++		 knownState & ~SCARD_STATE_IGNORE); 
++        } else {
++	    if (!(knownState & SCARD_STATE_UNAVAILABLE))
++		CKYReader_SetKnownState(&readerStates[ri], 
++		 knownState | SCARD_STATE_UNAVAILABLE | SCARD_STATE_CHANGED);
++	}
+     } 
+ 
++    /* OK we've marked everything unavailable, we are done */
++    if (readerStates == NULL) {
++	return;
++    }
++
+     const char *newReadersData[MAX_READER_DELTA];
+     const char **newReaders = &newReadersData[0];
+     unsigned int newReaderCount = 0;
+@@ -1283,6 +1272,7 @@ Slot::getTokenInfo(CK_TOKEN_INFO_PTR pTo
+ 
+ 
+     return CKR_OK;
++
+ }
+ 
+ void
+@@ -1303,7 +1293,16 @@ SlotList::waitForSlotEvent(CK_FLAGS flag
+     bool found = FALSE;
+     CKYStatus status;
+     SCARD_READERSTATE *myReaderStates = NULL;
++    static SCARD_READERSTATE pnp = { 0 };
+     unsigned int myNumReaders = 0;
++
++    readerListLock.getLock();
++    if (pnp.szReader == 0) {
++	    CKYReader_Init(&pnp);
++	    pnp.szReader = "\\\\?PnP?\\Notification";
++    }
++    readerListLock.releaseLock();
++
+ #ifndef notdef
+     do {
+ 	readerListLock.getLock();
+@@ -1317,49 +1316,91 @@ SlotList::waitForSlotEvent(CK_FLAGS flag
+ 	    throw;
+ 	}
+ 
+-	if (myNumReaders != numReaders) {
++	/* Before round-tripping to the daemon for the duration of the
++	 * timeout, first see if we lost any readers, and pick a slot
++	 * from that set to return
++	 */
++	for (i=0; i < numReaders; i++) {
++	    unsigned long knownState = 
++				CKYReader_GetKnownState(&readerStates[i]);
++
++	    if ((knownState & SCARD_STATE_UNAVAILABLE) &&
++		(knownState & SCARD_STATE_CHANGED)) {
++		CKYReader_SetKnownState(&readerStates[i], 
++				knownState & ~SCARD_STATE_CHANGED);
++		readerListLock.releaseLock();
++		*slotp = slotIndexToID(i);
++		found = TRUE;
++		break;
++	    }
++	}
++
++	if (found) {
++	    break;
++	}
++
++	if (shuttingDown) {
++	    readerListLock.releaseLock();
++	    break;
++	}
++
++	if (myNumReaders != numReaders + 1) {
+ 	    if (myReaderStates) {
+ 		delete [] myReaderStates;
+ 	    } 
+-	    myReaderStates = new SCARD_READERSTATE [numReaders];
++	    myReaderStates = new SCARD_READERSTATE [numReaders + 1];
++            myNumReaders = numReaders + 1;
+ 	}
+-	memcpy(myReaderStates, readerStates, 
+-				sizeof(SCARD_READERSTATE)*numReaders);
+-	myNumReaders = numReaders;
++
++	memcpy(myReaderStates, readerStates,
++				sizeof(SCARD_READERSTATE) * numReaders);
++	memcpy(&myReaderStates[numReaders], &pnp, sizeof(pnp));
+ 	readerListLock.releaseLock();
+ 	status = CKYCardContext_WaitForStatusChange(context,
+-				 myReaderStates, myNumReaders, timeout);
++			 myReaderStates, myNumReaders, timeout);
+ 	if (status == CKYSUCCESS) {
+-	    for (i=0; i < myNumReaders; i++) {
+-		SCARD_READERSTATE *rsp = &myReaderStates[i];
+-	        unsigned long eventState = CKYReader_GetEventState(rsp);
++            unsigned long eventState;
++	    for (i=0; i < myNumReaders - 1; i++) {
++		eventState = CKYReader_GetEventState(&myReaderStates[i]);
+ 		if (eventState & SCARD_STATE_CHANGED) {
+ 		    readerListLock.getLock();
+-		    CKYReader_SetKnownState(&readerStates[i], eventState & ~SCARD_STATE_CHANGED);
++		    CKYReader_SetKnownState(&readerStates[i], 
++				eventState & ~SCARD_STATE_CHANGED);
+ 		    readerListLock.releaseLock();
+ 		    *slotp = slotIndexToID(i);
+ 		    found = TRUE;
+ 		    break;
+ 		}
+ 	    }
+-	} 
++            /* No real need to check for an additional card, we already update 
++	     * the list when we iterate. */
++	    if (!found) {
++		eventState = CKYReader_GetEventState(
++					&myReaderStates[myNumReaders-1]);
++                if (eventState & SCARD_STATE_CHANGED) {
++		    readerListLock.getLock();
++		    CKYReader_SetKnownState(&pnp, 
++				eventState & ~SCARD_STATE_CHANGED);
++		    readerListLock.releaseLock();
++                    log->log("Reader insertion/removal detected\n");
++		    continue; /* get the update */
++		}
++            }
++	}
+ 
+         if (found || (flag == CKF_DONT_BLOCK) || shuttingDown) {
+             break;
+         }
+ 
+         #ifndef WIN32
+-        if (status != CKYSUCCESS) {
+-
+-            if ( (CKYCardContext_GetLastError(context) ==
+-                                        SCARD_E_READER_UNAVAILABLE) ||
+-                (CKYCardContext_GetLastError(context) == SCARD_E_TIMEOUT))
+-            {
+-                OSSleep(timeout*PKCS11_CARD_ERROR_LATENCY);
+-            }
+-
+-
+-        }
++        /* pcsc-lite needs to make progress or something */
++	if (status != CKYSUCCESS) {
++	    if ((CKYCardContext_GetLastError(context) ==
++						 SCARD_E_READER_UNAVAILABLE) ||
++	       (CKYCardContext_GetLastError(context) == SCARD_E_TIMEOUT)) {
++		OSSleep(timeout*PKCS11_CARD_ERROR_LATENCY);
++	    }
++	}
+         #endif
+     } while ((status == CKYSUCCESS) ||
+        (CKYCardContext_GetLastError(context) == SCARD_E_TIMEOUT) ||

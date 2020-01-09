@@ -1,0 +1,12 @@
+diff -up ./src/libckyapplet/cky_card.c.uninit_var ./src/libckyapplet/cky_card.c
+--- ./src/libckyapplet/cky_card.c.uninit_var	2014-07-31 17:47:23.540685395 -0700
++++ ./src/libckyapplet/cky_card.c	2014-07-31 17:48:15.847685375 -0700
+@@ -1120,7 +1120,7 @@ CKYCardConnection_GetStatus(CKYCardConne
+     unsigned long readerLen = 0;
+     unsigned long protocol;
+     unsigned long rv;
+-    CKYSize atrLen;
++    CKYSize atrLen = 0;
+     char *readerStr;
+     CKYStatus ret;
+ 

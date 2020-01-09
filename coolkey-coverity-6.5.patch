@@ -1,0 +1,95 @@
+diff -up ./src/coolkey/object.h.coverity ./src/coolkey/object.h
+--- ./src/coolkey/object.h.coverity	2013-08-14 00:14:03.000000000 -0700
++++ ./src/coolkey/object.h	2013-08-14 00:12:39.000000000 -0700
+@@ -49,7 +49,7 @@ class PKCS11Attribute {
+ 				CKYBuffer_Size(&cpy.value));
+ 	return *this;
+     }
+-    PKCS11Attribute() { CKYBuffer_InitEmpty(&value); }
++    PKCS11Attribute() : type(0){ CKYBuffer_InitEmpty(&value); }
+     PKCS11Attribute(CK_ATTRIBUTE_TYPE type_, const CKYBuffer *value_)
+         : type(type_) { CKYBuffer_InitFromCopy(&value, value_); }
+     ~PKCS11Attribute() { CKYBuffer_FreeData(&value); }
+diff -up ./src/coolkey/slot.cpp.coverity ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.coverity	2013-08-13 15:14:57.000000000 -0700
++++ ./src/coolkey/slot.cpp	2013-08-13 15:14:57.000000000 -0700
+@@ -164,7 +164,11 @@ SlotList::updateSlotList()
+ 	    throw PKCS11Exception(CKR_HOST_MEMORY);
+ 	memset(newSlots, 0, numReaders*sizeof(Slot*));
+ 
+-        memcpy(newSlots, slots, sizeof(slots[0]) * numSlots);
++        /* keep coverity happy, even though slot == NULL implies that
++	 * numSlots == 0 */
++	if (slots) { 
++            memcpy(newSlots, slots, sizeof(slots[0]) * numSlots);
++	}
+ 
+ 	for (unsigned int i=numSlots; i < numReaders; i++) {
+ 	    newSlots[i] = new
+@@ -287,6 +291,15 @@ SlotList::updateReaderList()
+ 	return;
+     }
+ 
++    if (readerStates == NULL) {
++	/* if we didn't have any readers before and we did get new names, 
++	 * that is handled above. If we didn't have any readers before, and
++	 * we didn't get any names, there is nothing to update. blow out now.
++	 * This more efficient and makes coverity happy (since coverity doesn't
++	 * know numReaders and readerStates are linked). */
++	return;
++    }
++
+ 
+     /* it would be tempting at this point just to see if we have more readers
+      * then specified previously. The problem with this is it is possible that
+@@ -316,8 +329,9 @@ SlotList::updateReaderList()
+ 	}
+     } 
+ 
+-    /* OK we've marked everything unavailable, we are done */
+-    if (readerStates == NULL) {
++    if (readerNames == NULL) {
++        /* OK we've marked everything unavailable, we clearly
++	 * aren't adding any readers, so we can blow out here */
+ 	return;
+     }
+ 
+diff -up ./src/coolkey/slot.h.coverity ./src/coolkey/slot.h
+--- ./src/coolkey/slot.h.coverity	2013-08-13 15:14:56.000000000 -0700
++++ ./src/coolkey/slot.h	2013-08-13 15:14:57.000000000 -0700
+@@ -213,7 +213,7 @@ class CryptOpState {
+     CKYBuffer result;
+     PKCS11Object::KeyType keyType;
+ 
+-    CryptOpState() : state(NOT_INITIALIZED), keyNum(0) 
++    CryptOpState() : state(NOT_INITIALIZED), keyNum(0), keyType(PKCS11Object::unknown)
+ 				{ CKYBuffer_InitEmpty(&result); }
+     CryptOpState(const CryptOpState &cpy) : 
+ 				state(cpy.state), keyNum(cpy.keyNum), keyType(cpy.keyType) { 
+diff -up ./src/libckyapplet/cky_base.c.coverity ./src/libckyapplet/cky_base.c
+--- ./src/libckyapplet/cky_base.c.coverity	2013-08-13 15:14:56.000000000 -0700
++++ ./src/libckyapplet/cky_base.c	2013-08-13 15:14:57.000000000 -0700
+@@ -41,6 +41,7 @@ ckyBuffer_initBuffer(CKYBuffer *buf)
+     buf->data = NULL;
+     buf->size = 0;
+     buf->len = 0;
++    buf->reserved = NULL; /* make coverity happy */
+ } 
+ 
+ /*
+@@ -573,6 +574,7 @@ CKYAPDU_Init(CKYAPDU *apdu)
+     assert(sizeof(CKYAPDU) == sizeof(CKYAPDUPublic));
+ #endif
+    ckyBuffer_initBuffer(&apdu->apduBuf);
++   apdu->reserved = NULL;
+    return CKYBuffer_Resize(&apdu->apduBuf, CKYAPDU_MIN_LEN);
+ }
+ 
+@@ -583,6 +585,7 @@ CKYAPDU_InitFromData(CKYAPDU *apdu, cons
+     assert(sizeof(CKYAPDU) == sizeof(CKYAPDUPublic));
+ #endif
+     ckyBuffer_initBuffer(&apdu->apduBuf);
++    apdu->reserved = NULL;
+     if (len > CKYAPDU_MAX_DATA_LEN) {
+ 	return CKYDATATOOLONG;
+     }

@@ -1,0 +1,11 @@
+diff -up ./src/coolkey/machdep.cpp.memleak ./src/coolkey/machdep.cpp
+--- ./src/coolkey/machdep.cpp.memleak	2012-02-29 15:48:42.858084645 -0800
++++ ./src/coolkey/machdep.cpp	2012-02-29 16:02:33.175029584 -0800
+@@ -368,6 +368,7 @@ SHMem::initSegment(const char *name, int
+ #ifdef FULL_CLEANUP
+ 	    flock(shmemData->fd, LOCK_UN);
+ #endif
++	    free(buf);
+ 	    delete shmemData;
+ 	    return NULL;
+ 	}

@@ -1,0 +1,74 @@
+diff -up ./src/coolkey/slot.cpp.pcscd_restart ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.pcscd_restart	2011-01-17 16:40:46.822200269 -0800
++++ ./src/coolkey/slot.cpp	2011-01-18 10:20:47.685027023 -0800
+@@ -237,9 +237,13 @@ SlotList::updateReaderList()
+ 
+     CKYStatus status = CKYCardContext_ListReaders(context, &readerNames);
+     if ( status != CKYSUCCESS ) {
+-	throw PKCS11Exception(CKR_GENERAL_ERROR,
++	/* if the service is stopped, treat it as if we have no readers */
++ 	if ((CKYCardContext_GetLastError(context) != SCARD_E_NO_SERVICE) && 
++	    (CKYCardContext_GetLastError(context) != SCARD_E_SERVICE_STOPPED)) {
++	    throw PKCS11Exception(CKR_GENERAL_ERROR,
+                 "Failed to list readers: 0x%x\n", 
+ 				CKYCardContext_GetLastError(context));
++	}
+     }
+ 
+     if (!readerStates) {
+@@ -1261,7 +1265,7 @@ SlotList::waitForSlotEvent(CK_FLAGS flag
+ 		    break;
+ 		}
+ 	    }
+-	}
++	} 
+ 
+         if (found || (flag == CKF_DONT_BLOCK) || shuttingDown) {
+             break;
+@@ -1282,7 +1286,9 @@ SlotList::waitForSlotEvent(CK_FLAGS flag
+         #endif
+     } while ((status == CKYSUCCESS) ||
+        (CKYCardContext_GetLastError(context) == SCARD_E_TIMEOUT) ||
+-        ( CKYCardContext_GetLastError(context) == SCARD_E_READER_UNAVAILABLE));
++       (CKYCardContext_GetLastError(context) == SCARD_E_READER_UNAVAILABLE) ||
++       (CKYCardContext_GetLastError(context) == SCARD_E_NO_SERVICE) ||
++       (CKYCardContext_GetLastError(context) == SCARD_E_SERVICE_STOPPED) );
+ #else
+     do {
+ 	OSSleep(100);
+@@ -1319,6 +1325,7 @@ Slot::handleConnectionError()
+       case SCARD_W_REMOVED_CARD:
+         ckrv = CKR_DEVICE_REMOVED;
+         break;
++      
+       default:
+         ckrv = CKR_DEVICE_ERROR;
+         break;
+@@ -3402,10 +3409,12 @@ retry:
+         status = CKYApplet_ComputeCrypt(conn, keyNum, CKY_RSA_NO_PAD, direction,
+ 		input, NULL, output, getNonce(), &result);
+     } 
++#ifdef notdef /* CAC pin caching is incomplete, don't enable it */
+     /* map the ISO not logged in code to the coolkey one */
+     if (status == CKYISO_CONDITION_NOT_SATISFIED) {
+ 	status = (CKYStatus) CKYISO_UNAUTHORIZED;
+     }
++#endif
+     if (status != CKYSUCCESS) {
+ 	if ( status == CKYSCARDERR ) {
+ 	    handleConnectionError();
+diff -up ./src/libckyapplet/cky_card.c.pcscd_restart ./src/libckyapplet/cky_card.c
+--- ./src/libckyapplet/cky_card.c.pcscd_restart	2011-01-17 16:59:53.417200696 -0800
++++ ./src/libckyapplet/cky_card.c	2011-01-17 18:09:13.236573929 -0800
+@@ -844,6 +844,11 @@ CKYCardContext_WaitForStatusChange(CKYCa
+     rv = ctx->scard->SCardGetStatusChange(ctx->context, timeout, 
+ 							readers, readerCount);
+     if (rv != SCARD_S_SUCCESS) {
++	if ((rv == SCARD_E_NO_SERVICE) || (rv == SCARD_E_SERVICE_STOPPED)) {
++	    /* if we were stopped, don't reuse the old context, 
++	     * pcsc-lite hangs */
++	    ckyCardContext_release(ctx); 
++	} 
+ 	ctx->lastError = rv;
+ 	return CKYSCARDERR;
+     }

@@ -1,0 +1,95 @@
+diff -up ./src/coolkey/slot.cpp.spice-fix ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.spice-fix	2012-03-05 16:28:25.403259591 -0800
++++ ./src/coolkey/slot.cpp	2012-03-05 16:28:25.418259841 -0800
+@@ -1429,7 +1429,7 @@ Slot::selectApplet()
+ }
+ 
+ void
+-Slot::selectCACApplet(CKYByte instance)
++Slot::selectCACApplet(CKYByte instance, bool doDisconnect)
+ {
+     CKYStatus status;
+     /* PIV containers and keys by instance */
+@@ -1454,7 +1454,9 @@ Slot::selectCACApplet(CKYByte instance)
+         status = PIVApplet_Select(conn, NULL);
+ 	if (status == CKYSCARDERR) handleConnectionError();
+ 	if (status != CKYSUCCESS) {
+-	    disconnect();
++	    if (doDisconnect) {
++	        disconnect();
++	    }
+ 	    throw PKCS11Exception(CKR_DEVICE_REMOVED);
+ 	}
+ 	pivContainer = container[instance];
+@@ -1464,7 +1466,9 @@ Slot::selectCACApplet(CKYByte instance)
+     CKYBuffer *aid = &cardAID[instance];
+ 
+     if (CKYBuffer_Size(aid) == 0) {
+-        disconnect();
++	if (doDisconnect) {
++	    disconnect();
++	}
+         throw PKCS11Exception(CKR_DEVICE_REMOVED);
+ 	return;
+     }
+@@ -1473,7 +1477,9 @@ Slot::selectCACApplet(CKYByte instance)
+     if ( status == CKYSCARDERR ) handleConnectionError();
+     if ( status != CKYSUCCESS) {
+         // could not select applet: this just means it's not there
+-        disconnect();
++	if (doDisconnect) {
++	    disconnect();
++	}
+         throw PKCS11Exception(CKR_DEVICE_REMOVED);
+     }
+     if (mOldCAC) {
+@@ -1482,7 +1488,9 @@ Slot::selectCACApplet(CKYByte instance)
+     status = CACApplet_SelectFile(conn, cardEF[instance], NULL);
+     if ( status == CKYSCARDERR ) handleConnectionError();
+     if ( status != CKYSUCCESS) {
+-        disconnect();
++	if (doDisconnect) {
++	    disconnect();
++	}
+         throw PKCS11Exception(CKR_DEVICE_REMOVED);
+     }
+ }
+@@ -2633,7 +2641,7 @@ Slot::loadCACCert(CKYByte instance)
+     // catch the applet selection errors if they don't
+     //
+     try {
+-        selectCACApplet(instance);
++        selectCACApplet(instance, false);
+     } catch(PKCS11Exception& e) {
+ 	// all CAC's must have instance '0', throw the error it
+ 	// they don't.
+@@ -3078,7 +3086,7 @@ Slot::login(SessionHandleSuffix handleSu
+     if(status != CKYSUCCESS ) handleConnectionError();
+ 
+     if (state & GOV_CARD) {
+-	selectCACApplet(0);
++	selectCACApplet(0, true);
+     } else {
+ 	selectApplet();
+     }
+@@ -3780,7 +3788,7 @@ Slot::performRSAOp(CKYBuffer *output, co
+     // select the applet
+     //
+     if (state & GOV_CARD) {
+-	selectCACApplet(keyNum);
++	selectCACApplet(keyNum, true);
+     } else {
+ 	selectApplet();
+     }
+diff -up ./src/coolkey/slot.h.spice-fix ./src/coolkey/slot.h
+--- ./src/coolkey/slot.h.spice-fix	2012-03-05 16:30:56.458772157 -0800
++++ ./src/coolkey/slot.h	2012-03-05 16:31:19.880161731 -0800
+@@ -415,7 +415,7 @@ class Slot {
+     CKYStatus readCACCertificateAppend(CKYBuffer *cert, CKYSize nextSize);
+ 
+     void selectApplet();
+-    void selectCACApplet(CKYByte instance);
++    void selectCACApplet(CKYByte instance,bool do_disconnect);
+     void unloadObjects();
+     void loadCACObjects();
+     void loadCACCert(CKYByte instance);

@@ -1,0 +1,12 @@
+diff -up ./src/libckyapplet/cky_factory.c.gvt_piv ./src/libckyapplet/cky_factory.c
+--- ./src/libckyapplet/cky_factory.c.gvt_piv	2012-12-03 15:03:00.565800000 -0800
++++ ./src/libckyapplet/cky_factory.c	2012-12-03 15:03:49.918600000 -0800
+@@ -688,7 +688,7 @@ PIVAPDUFactory_GetData(CKYAPDU *apdu, co
+     CKYByte objectSize;
+ 
+     CKYBuffer_InitEmpty(&buf);
+-    CKYAPDU_SetCLA(apdu, CKY_CLASS_GLOBAL_PLATFORM);
++    CKYAPDU_SetCLA(apdu, CKY_CLASS_ISO7816);
+     CKYAPDU_SetINS(apdu, 0xcb);
+     CKYAPDU_SetP1(apdu, 0x3f);
+     CKYAPDU_SetP2(apdu, 0xff);
