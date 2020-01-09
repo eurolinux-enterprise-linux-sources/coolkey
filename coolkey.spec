@@ -23,7 +23,7 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 37%{?dist}
+Release: 39%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
 URL: http://directory.fedora.redhat.com/wiki/CoolKey
@@ -51,6 +51,10 @@ Patch20: coolkey-1.1.0-noapplet.patch
 Patch21: coolkey-1.1.0-uninit-var.patch
 Patch22: coolkey-1.1.0-contactless.patch
 Patch23: coolkey-1.1.0-alt-cac.patch
+Patch24: coolkey-1.1.0-hp-fix.patch 
+Patch25: coolkey-1.1.0-alt-cac-2.patch
+Patch26: coolkey-1.1.0-move-cache.patch
+Patch27: coolkey-1.1.0-hp-fix-2.patch 
 
 Group: System Environment/Libraries
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -102,6 +106,10 @@ Linux Driver support to access the CoolKey applet.
 %patch21 -b .uninit-var
 %patch22 -b .contactless
 %patch23 -b .alt_cac
+%patch24 -b .hp_fix
+%patch25 -b .alt_cac_2
+%patch26 -b .move_cache
+%patch27 -b .hp_fix_2
 
 %build
 autoconf
@@ -157,6 +165,15 @@ fi
 
 
 %changelog
+* Wed Dec 7 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-39
+- fix hang when using hp keyboard with CAC and coolkey cards
+
+* Wed Sep 28 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-38
+- rename the cache changes done in -36 so that they have issues with old
+  cache values
+- fix cac 1 alt tokens that store certs beyond the top three slots
+- fix hand when using hp keyboard
+
 * Tue Jan 19 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-37
 - Make sure the /var/cache/coolkey directory has the correct permissions in
   the spec file.
@@ -167,7 +184,7 @@ fi
 - Allow cards to have ECC and RSA certs and keys
 
 * Wed Apr 8 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-35
-- Fix typo the broke ESC phone home.
+- Fix typo that broke ESC phone home.
 
 * Fri Feb 27 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-34
 - make contactless support more reliable. Make signing work.

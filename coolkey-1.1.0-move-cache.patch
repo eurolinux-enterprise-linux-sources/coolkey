@@ -1,0 +1,13 @@
+diff -up ./src/coolkey/slot.cpp.move_cache ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.move_cache	2016-10-03 15:38:49.308606789 -0700
++++ ./src/coolkey/slot.cpp	2016-10-03 15:40:05.696646565 -0700
+@@ -1851,7 +1851,8 @@ const unsigned short CAC_DATA_VERSION=2;
+ // previous development versions used a segment prefix of
+ // "coolkeypk11s"
+ //
+-#define SEGMENT_PREFIX "coolkeypk11s"
++#define SEGMENT_PREFIX "coolkeypk11t" // update segment since the old cache was
++                                      // incompatible
+ #define CAC_FAKE_CUID "CAC Certs"
+ SlotMemSegment::SlotMemSegment(const char *readerName): 
+ 	segmentAddr(NULL),  segmentSize(0), segment(NULL)

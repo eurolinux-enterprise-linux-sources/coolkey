@@ -1,0 +1,246 @@
+diff -up ./src/coolkey/slot.cpp.hp_fix ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.hp_fix	2016-10-04 15:25:27.355603188 -0700
++++ ./src/coolkey/slot.cpp	2016-10-04 15:27:41.093922045 -0700
+@@ -2995,6 +2995,7 @@ Slot::loadObjects()
+     CKYBuffer_InitEmpty(&header);
+     CKYStatus status = trans.begin(conn);
+     if( status != CKYSUCCESS ) {
++	log->log("transaction failure in loadObjects");
+         handleConnectionError();
+     }
+     OSTime time = OSTimeNow();
+@@ -4189,7 +4190,10 @@ Slot::performECCSignature(CKYBuffer *out
+     /* establish a transaction */
+     Transaction trans;
+     CKYStatus status = trans.begin(conn);
+-    if( status != CKYSUCCESS ) handleConnectionError();
++    if( status != CKYSUCCESS ) {
++	log->log("transaction failure in ECC Signature");
++	handleConnectionError();
++    }
+ 
+     if (state & GOV_CARD) {
+ 	selectCACApplet(keyNum, true);
+@@ -4216,6 +4220,7 @@ retry:
+ 
+     if (status != CKYSUCCESS) {
+         if ( status == CKYSCARDERR ) {
++	    log->log("card failure in ECC Signature");
+             handleConnectionError();
+         }
+ 
+@@ -4264,7 +4269,10 @@ Slot::performRSAOp(CKYBuffer *output, co
+     //
+     Transaction trans;
+     CKYStatus status = trans.begin(conn);
+-    if( status != CKYSUCCESS ) handleConnectionError();
++    if( status != CKYSUCCESS ) {
++	log->log("transaction failure in RSA OP");
++	handleConnectionError();
++    }
+ 
+     //
+     // select the applet
+@@ -4295,6 +4303,7 @@ retry:
+ 
+     if (status != CKYSUCCESS) {
+ 	if ( status == CKYSCARDERR ) {
++	    log->log("card failure in RSA OP");
+ 	    handleConnectionError();
+ 	}
+         if (result == CKYISO_DATA_INVALID) {
+@@ -4623,7 +4632,10 @@ Slot::performECCKeyAgreement(CK_MECHANIS
+ 
+     Transaction trans;
+     CKYStatus status = trans.begin(conn);
+-    if( status != CKYSUCCESS ) handleConnectionError();
++    if( status != CKYSUCCESS ) {
++	log->log("transaction failure in ECC Derive");
++	handleConnectionError();
++    }
+ 
+     if (state & GOV_CARD) {
+ 	selectCACApplet(keyNum, true);
+@@ -4653,6 +4665,7 @@ retry:
+ 
+     if (status != CKYSUCCESS) {
+         if ( status == CKYSCARDERR ) {
++	    log->log("card failure in ECC Derive");
+             handleConnectionError();
+         }
+ 
+diff -up ./src/libckyapplet/cky_applet.c.hp_fix ./src/libckyapplet/cky_applet.c
+--- ./src/libckyapplet/cky_applet.c.hp_fix	2016-10-04 15:08:09.264652435 -0700
++++ ./src/libckyapplet/cky_applet.c	2016-10-04 15:08:09.327651644 -0700
+@@ -297,6 +297,13 @@ PIVAppletFactory_GetCertificate(CKYAPDU 
+ }
+ 
+ CKYStatus
++PIVAppletFactory_GetCertificateHPBug(CKYAPDU *apdu, const void *param)
++{
++    CKYBuffer *tag  =(CKYBuffer*)param;
++    return PIVAPDUFactory_GetData(apdu, tag, 0xf0);
++}
++
++CKYStatus
+ CACAppletFactory_ReadFile(CKYAPDU *apdu, const void *param)
+ {
+     const CACAppletArgReadFile *rfs = (const CACAppletArgReadFile *)param;
+@@ -1256,6 +1263,7 @@ PIVApplet_GetCertificate(CKYCardConnecti
+     CKYStatus ret;
+     CKYISOStatus status;
+     CKYBuffer tagBuf;
++    CKYBool hp_bug = CKYCardConnection_HasHPBug(conn);
+ 
+     CKYBuffer_InitEmpty(&tagBuf);
+     CKYBuffer_Reserve(&tagBuf,4); /* can be up to 4 bytes */
+@@ -1281,6 +1289,7 @@ PIVApplet_GetCertificate(CKYCardConnecti
+ 	
+ 
+     ret = CKYApplet_HandleAPDU(conn, 
++			    hp_bug ? PIVAppletFactory_GetCertificateHPBug :
+ 			    PIVAppletFactory_GetCertificate, &tagBuf, NULL, 
+ 			    CKY_SIZE_UNKNOWN, CKYAppletFill_AppendBuffer, cert,
+ 			    apduRC);
+@@ -1396,6 +1405,7 @@ PIVApplet_SignDecrypt(CKYCardConnection 
+     int length;
+     PIVAppletArgSignDecrypt pasd; 
+     PIVAppletRespSignDecrypt prsd; 
++    CKYBool hp_bug = CKYCardConnection_HasHPBug(conn);
+ 
+     /* PIV only defines RSA 1024 and 2048, ECC 256 and ECC 384!!! */
+     if (keySize == 128) { /* 1024 bit == 128 bytes */
+@@ -1472,6 +1482,9 @@ PIVApplet_SignDecrypt(CKYCardConnection 
+ 
+     pasd.chain = 0;
+     pasd.len = outputSize;
++    if (hp_bug) {
++	if (pasd.len > 0xf0) pasd.len = 0xf0;
++    }
+ 
+     ret = CKYApplet_HandleAPDU(conn, PIVAppletFactory_SignDecrypt, 
+ 			    &pasd, NULL, CKY_SIZE_UNKNOWN, 
+diff -up ./src/libckyapplet/cky_card.c.hp_fix ./src/libckyapplet/cky_card.c
+--- ./src/libckyapplet/cky_card.c.hp_fix	2016-10-04 15:08:09.299651995 -0700
++++ ./src/libckyapplet/cky_card.c	2016-10-04 15:08:09.328651631 -0700
+@@ -18,6 +18,7 @@
+  * ***** END COPYRIGHT BLOCK ***** */
+ 
+ #include <winscard.h>
++#include <unistd.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include "cky_basei.h" /* friend class */
+@@ -895,8 +896,9 @@ struct _CKYCardConnection {
+     SCard            *scard;     /* cache a copy from the context */
+     SCARDHANDLE      cardHandle;
+     unsigned long    lastError;
+-    CKYBool           inTransaction;
++    CKYBool          inTransaction;
+     unsigned long    protocol;
++    CKYBool	     hp_bug;
+ };
+ 
+ static void
+@@ -908,6 +910,7 @@ ckyCardConnection_init(CKYCardConnection
+     conn->lastError = 0;
+     conn->inTransaction = 0;
+     conn->protocol = SCARD_PROTOCOL_T0;
++    conn->hp_bug = 0;
+ }
+ 
+ CKYCardConnection *
+@@ -943,6 +946,13 @@ CKYCardConnection_Destroy(CKYCardConnect
+     return CKYSUCCESS;
+ }
+ 
++CKYBool
++CKYCardConnection_HasHPBug(CKYCardConnection *conn)
++{
++    return conn->hp_bug && (conn->protocol == SCARD_PROTOCOL_T1);
++}
++
++#define HP_KEYBOARD "HP USB Smart Card Keyboard"
+ CKYStatus 
+ CKYCardConnection_Connect(CKYCardConnection *conn, const char *readerName)
+ {
+@@ -959,6 +969,11 @@ CKYCardConnection_Connect(CKYCardConnect
+ 	conn->lastError = rv;
+ 	return CKYSCARDERR;
+     }
++    /* HP Keyboards makes errors on PIV cards in T1 mode, 
++     * our behavior */
++    conn->hp_bug = 
++	strncmp(readerName, HP_KEYBOARD, sizeof(HP_KEYBOARD)-1) == 0 ? 1 : 0;
++	
+     return CKYSUCCESS;
+ }
+ 
+@@ -1019,6 +1034,9 @@ CKYCardConnection_BeginTransaction(CKYCa
+ 	conn->lastError = rv;
+  	return CKYSCARDERR;
+     }
++    if (conn->hp_bug) {
++	usleep(100);
++    }
+     conn->inTransaction = 1;
+     return CKYSUCCESS;
+ }
+@@ -1080,6 +1098,7 @@ CKYCardConnection_ExchangeAPDU(CKYCardCo
+     CKYBuffer getResponse;
+     CKYSize size = 0;
+ 
++
+     ret = CKYCardConnection_TransmitAPDU(conn, apdu, response);
+     if (ret != CKYSUCCESS) {
+ 	return ret;
+@@ -1092,6 +1111,7 @@ CKYCardConnection_ExchangeAPDU(CKYCardCo
+ 	   (CKYBuffer_GetChar(response,size-2) == 0x61)) {
+ 	/* get the response */
+ 	CKYAPDU getResponseAPDU;
++	CKYByte bytes_to_read;
+ 
+ 	CKYBuffer_Zero(&getResponse);
+ 	CKYAPDU_Init(&getResponseAPDU);
+@@ -1099,8 +1119,15 @@ CKYCardConnection_ExchangeAPDU(CKYCardCo
+ 	CKYAPDU_SetINS(&getResponseAPDU, 0xc0);
+ 	CKYAPDU_SetP1(&getResponseAPDU, 0x00);
+ 	CKYAPDU_SetP2(&getResponseAPDU, 0x00);
+-	CKYAPDU_SetReceiveLen(&getResponseAPDU, 
+-					CKYBuffer_GetChar(response,size-1));
++	bytes_to_read = CKYBuffer_GetChar(response,size-1);
++
++	/* bug in HP Reader, seems handle protocol=T1 poorly. */
++	if (conn->hp_bug && (conn->protocol == SCARD_PROTOCOL_T1) &&
++		((bytes_to_read == 0) || (bytes_to_read >  0xf0))) {
++	    bytes_to_read = 0xf0;
++	} 
++	
++	CKYAPDU_SetReceiveLen(&getResponseAPDU,  bytes_to_read);
+ 	ret = CKYCardConnection_TransmitAPDU(conn, &getResponseAPDU,
+ 					&getResponse);
+ 	CKYAPDU_FreeData(&getResponseAPDU);
+diff -up ./src/libckyapplet/cky_card.h.hp_fix ./src/libckyapplet/cky_card.h
+--- ./src/libckyapplet/cky_card.h.hp_fix	2006-06-09 11:44:17.000000000 -0700
++++ ./src/libckyapplet/cky_card.h	2016-10-04 15:08:09.330651605 -0700
+@@ -116,6 +116,7 @@ CKYStatus CKYCardConnection_ExchangeAPDU
+ CKYStatus CKYCardConnection_Connect(CKYCardConnection *connection, 
+ 					const char *readerName);
+ CKYStatus CKYCardConnection_Disconnect(CKYCardConnection *connection);
++CKYBool CKYCardConnection_HasHPBug(CKYCardConnection *connection);
+ CKYBool CKYCardConnection_IsConnected(const CKYCardConnection *connection);
+ CKYStatus CKYCardConnection_Reconnect(CKYCardConnection *connection);
+ CKYStatus CKYCardConnection_GetStatus(CKYCardConnection *connection,
+diff -up ./src/libckyapplet/cky_factory.c.hp_fix ./src/libckyapplet/cky_factory.c
+--- ./src/libckyapplet/cky_factory.c.hp_fix	2016-10-04 15:08:09.270652359 -0700
++++ ./src/libckyapplet/cky_factory.c	2016-10-04 15:08:09.331651592 -0700
+@@ -801,7 +801,8 @@ PIVAPDUFactory_GetData(CKYAPDU *apdu, co
+     if (ret != CKYSUCCESS) {
+ 	    goto fail;
+     } 
+-    ret = CKYAPDU_AppendReceiveLen(apdu, count);
++    /* hp */
++    ret = CKYAPDU_AppendReceiveLen(apdu, count); 
+ fail:
+     CKYBuffer_FreeData(&buf);
+     return ret;

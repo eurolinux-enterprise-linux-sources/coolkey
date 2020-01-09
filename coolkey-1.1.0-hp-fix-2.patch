@@ -1,0 +1,59 @@
+diff -up ./src/libckyapplet/cky_applet.c.hp_fix_2 ./src/libckyapplet/cky_applet.c
+--- ./src/libckyapplet/cky_applet.c.hp_fix_2	2016-12-01 17:20:35.349612776 -0800
++++ ./src/libckyapplet/cky_applet.c	2016-12-07 12:44:00.222713580 -0800
+@@ -1026,14 +1026,16 @@ CACApplet_SignDecrypt(CKYCardConnection 
+     CKYSize dataSize = CKYBuffer_Size(data);
+     CKYOffset offset = 0;
+     CKYBuffer tmp;
++    CKYBool hp_bug = CKYCardConnection_HasHPBug(conn);
++    CKYByte max_size = hp_bug ? 0xf0 : CKY_MAX_READ_CHUNK_SIZE;
+ 
+     CKYBuffer_InitEmpty(&tmp);
+ 
+     CKYBuffer_Resize(result, 0);
+-    for(offset = 0; (dataSize-offset) > CKY_MAX_WRITE_CHUNK_SIZE; 
+-				offset += CKY_MAX_WRITE_CHUNK_SIZE) {
++    for(offset = 0; (dataSize-offset) > max_size; 
++				offset += max_size) {
+ 	CKYBuffer_Resize(&tmp,0);
+-	CKYBuffer_AppendBuffer(&tmp, data, offset, CKY_MAX_WRITE_CHUNK_SIZE);
++	CKYBuffer_AppendBuffer(&tmp, data, offset, max_size);
+         ret = CKYApplet_HandleAPDU(conn, CACAppletFactory_SignDecryptStep, 
+ 			    &tmp, NULL, CKY_SIZE_UNKNOWN, 
+ 			    CKYAppletFill_AppendBuffer, 
+@@ -1125,10 +1127,11 @@ CACApplet_ReadFile(CKYCardConnection *co
+ {
+     CKYStatus ret;
+     CKYISOStatus status;
+-    CKYByte maxtransfer;
+     unsigned short offset = 0;
+     unsigned short size;
+     CACAppletArgReadFile rfs;
++    CKYBool hp_bug = CKYCardConnection_HasHPBug(conn);
++    CKYByte maxtransfer = hp_bug ? 0xf0 : CKY_MAX_READ_CHUNK_SIZE;
+ 
+     CKYBuffer_Resize(buffer,0);
+     if (apduRC == NULL) {
+@@ -1148,7 +1151,6 @@ CACApplet_ReadFile(CKYCardConnection *co
+ 	return ret;
+     }
+     size = CKYBuffer_GetShortLE(buffer, 0) + 2 /* include the length itself */;
+-    maxtransfer = CKY_MAX_READ_CHUNK_SIZE;
+     /* get the rest of the buffer if necessary */
+     for (offset = CKYBuffer_Size(buffer); size > offset; 
+ 				offset = CKYBuffer_Size(buffer)) {
+@@ -1631,11 +1633,13 @@ CKYApplet_ReadObjectFull(CKYCardConnecti
+ {
+     CKYAppletArgReadObject rod;
+     CKYStatus ret = CKYSUCCESS;
++    CKYBool hp_bug = CKYCardConnection_HasHPBug(conn);
++    CKYByte max_size = hp_bug ? 0xf0 : CKY_MAX_READ_CHUNK_SIZE;
+ 
+     rod.objectID = objectID;
+     rod.offset = offset;
+     do {
+-	rod.size = (CKYByte) MIN(size, CKY_MAX_READ_CHUNK_SIZE);
++	rod.size = (CKYByte) MIN(size, max_size);
+ 	ret = CKYApplet_HandleAPDU(conn, CKYAppletFactory_ReadObject, &rod,
+ 	   nonce, rod.size, CKYAppletFill_AppendBuffer, data, apduRC);
+ 	size -= rod.size;

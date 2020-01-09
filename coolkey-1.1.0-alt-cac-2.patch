@@ -1,0 +1,45 @@
+diff -up ./src/coolkey/slot.cpp.alt_cac_2 ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.alt_cac_2	2016-09-29 14:26:05.575798726 -0700
++++ ./src/coolkey/slot.cpp	2016-09-29 15:20:35.621692869 -0700
+@@ -887,10 +887,13 @@ Slot::getCACAid()
+ 	}
+ 	/* yes, fill in the old applets */
+ 	mOldCAC = true;
++	maxCacCerts = 1;
+ 	for (i=1; i< MAX_CERT_SLOTS; i++) {
+-	    CACApplet_SelectPKI(conn, &cardAID[i], i, NULL);
++	    status = CACApplet_SelectPKI(conn, &cardAID[i], i, NULL);
++	    if (status == CKYSUCCESS) {
++		maxCacCerts = i+1;
++	    }
+ 	}
+-	maxCacCerts = 3;
+ 	return CKYSUCCESS;
+     }
+     /* definately not an old CAC */
+@@ -2499,7 +2502,10 @@ Slot::readCACCertificateFirst(CKYBuffer 
+     if (mOldCAC) {
+ 	/* get the first 100 bytes of the cert */
+ 	status = CACApplet_GetCertificateFirst(conn, cert, nextSize, &apduRC);
+-	return status;
++	if (status == CKYSUCCESS) {
++		return status;
++	}
++	/* try to use CACApplet_ReadFile before we give up */
+     }
+ 
+     CKYBuffer tBuf;
+@@ -2515,11 +2521,11 @@ Slot::readCACCertificateFirst(CKYBuffer 
+ 
+     /* handle the new CAC card read */
+     /* read the TLV */
+-    status = CACApplet_ReadFile(conn, CAC_TAG_FILE, &tBuf, NULL);
++    status = CACApplet_ReadFile(conn, CAC_TAG_FILE, &tBuf, &apduRC);
+     if (status != CKYSUCCESS) {
+ 	goto done;
+     }
+-    status = CACApplet_ReadFile(conn, CAC_VALUE_FILE, &vBuf, NULL);
++    status = CACApplet_ReadFile(conn, CAC_VALUE_FILE, &vBuf, &apduRC);
+     if (status != CKYSUCCESS) {
+ 	goto done;
+     }
