@@ -23,7 +23,7 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 32%{?dist}
+Release: 35%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
 URL: http://directory.fedora.redhat.com/wiki/CoolKey
@@ -49,6 +49,7 @@ Patch18: coolkey-coverity-6.5.patch
 Patch19: coolkey-1.1.0-add-sql.patch
 Patch20: coolkey-1.1.0-noapplet.patch
 Patch21: coolkey-1.1.0-uninit-var.patch
+Patch22: coolkey-1.1.0-contactless.patch
 
 Group: System Environment/Libraries
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -98,6 +99,7 @@ Linux Driver support to access the CoolKey applet.
 %patch19 -b .sql
 %patch20 -b .noapplet
 %patch21 -b .uninit-var
+%patch22 -b .contactless
 
 %build
 autoconf
@@ -153,6 +155,15 @@ fi
 
 
 %changelog
+* Wed Apr 8 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-35
+- Fix typo the broke ESC phone home.
+
+* Fri Feb 27 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-34
+- make contactless support more reliable. Make signing work.
+
+* Thu Feb 26 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-33
+- contactless support
+
 * Thu Jul 31 2014 Bob Relyea <rrelyea@redhat.com> - 1.1.0-32
 - initialize the ATR length so it doesn't accidentally fall into
   the auto allocate value.

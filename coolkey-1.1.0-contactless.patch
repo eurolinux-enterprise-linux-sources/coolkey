@@ -1,0 +1,142 @@
+diff -up ./src/coolkey/slot.cpp.contactless ./src/coolkey/slot.cpp
+--- ./src/coolkey/slot.cpp.contactless	2015-02-27 17:30:53.741264632 -0800
++++ ./src/coolkey/slot.cpp	2015-02-27 17:31:39.595688222 -0800
+@@ -408,7 +408,7 @@ Slot::Slot(const char *readerName_, Log 
+ 	slotInfoFound(false), context(context_), conn(NULL), state(UNKNOWN), 
+ 	isVersion1Key(false), needLogin(false), fullTokenName(false), 
+ 	mCoolkey(false), mOldCAC(false),mCACLocalLogin(false),
+-	pivContainer(-1), pivKey(-1), mECC(false), 
++	pivContainer(-1), pivKey(-1), pivContactless(false), mECC(false), 
+ #ifdef USE_SHMEM
+ 	shmem(readerName_),
+ #endif
+@@ -744,6 +744,7 @@ Slot::connectToToken()
+     if (status == CKYSUCCESS) {
+ 	 /* CARD is a PIV card */
+ 	 state |= PIV_CARD | APPLET_SELECTABLE | APPLET_PERSONALIZED;
++	 pivContactless=false; /* don't know yet, find out in CACLoadCert */
+ 	 isVersion1Key = 0;
+ 	 needLogin = 1;
+          mCoolkey = 0;
+@@ -776,7 +777,7 @@ Slot::connectToToken()
+ 	mCACLocalLogin = false;
+ 	return;
+     }
+-    mCoolkey = 1;
++    mCoolkey = 1; /* coolkey applet selected */
+     log->log("time connect: Select Applet %d ms\n", OSTimeNow() - time);
+ 
+     state |= APPLET_SELECTABLE;
+@@ -1541,6 +1542,15 @@ Slot::selectCACApplet(CKYByte instance, 
+ 	    }
+ 	    throw PKCS11Exception(CKR_DEVICE_REMOVED);
+ 	}
++	if (pivContactless) {
++	    CKYByte tmp = instance;
++	    if (instance == 0) {
++		tmp = 3;
++	    } else if (instance == 3) {
++		tmp = 0;
++	    }
++	    instance = tmp;
++	}
+ 	pivContainer = container[instance];
+ 	pivKey = keyRef[instance];
+ 	return;
+@@ -2424,8 +2434,7 @@ berProcess(CKYBuffer *buf, int matchTag,
+ 
+ 
+ CKYStatus
+-Slot::readCACCertificateFirst(CKYBuffer *cert, CKYSize *nextSize, 
+-			      bool throwException)
++Slot::readCACCertificateFirst(CKYBuffer *cert, CKYSize *nextSize) 
+ {
+     CKYStatus status;
+     CKYISOStatus apduRC;
+@@ -2439,9 +2448,6 @@ Slot::readCACCertificateFirst(CKYBuffer 
+ 	CKYBuffer_InitEmpty(&certInfo);
+ 	CKYBuffer_Resize(cert, 0);
+ 	status = PIVApplet_GetCertificate(conn, cert, pivContainer, &apduRC);
+-	if (throwException && (status != CKYSUCCESS)) {
+-	    handleConnectionError();
+-	}
+ 	/* actually, on success, we need to parse the certificate and find the
+ 	 * propper tag */
+ 	if (status == CKYSUCCESS) {
+@@ -2482,9 +2488,6 @@ Slot::readCACCertificateFirst(CKYBuffer 
+     if (mOldCAC) {
+ 	/* get the first 100 bytes of the cert */
+ 	status = CACApplet_GetCertificateFirst(conn, cert, nextSize, &apduRC);
+-	if (throwException && (status != CKYSUCCESS)) {
+-	    handleConnectionError();
+-	}
+ 	return status;
+     }
+ 
+@@ -2772,11 +2775,22 @@ Slot::loadCACCert(CKYByte instance)
+ 						 instance, OSTimeNow() - time);
+ 
+     if (instance == 0) {
+-	readCACCertificateFirst(&rawCert, &nextSize, true);
++	status = readCACCertificateFirst(&rawCert, &nextSize);
++	if ((status != CKYSUCCESS) || CKYBuffer_Size(&rawCert) <= 1) {
++	    if ((pivContactless) || ((state & PIV_CARD) == 0)) {
++		handleConnectionError();
++	    }
++	    /* PIV Contactless cards don't have access to the
++	     * PIV Authentication Key. Check for the Card Authentication Key */
++	    pivContactless = true;
++	    selectCACApplet(instance, false);
++	    status = readCACCertificateFirst(&rawCert, &nextSize);
++	    if ((status != CKYSUCCESS) || CKYBuffer_Size(&rawCert) <= 1) {
++		handleConnectionError();
++	    }
++	    needLogin = 0;
++	}
+ 
+-        if(CKYBuffer_Size(&rawCert) <= 1) {
+-             handleConnectionError();
+-        }
+ 	log->log("CAC Cert %d: fetch CAC Cert:  %d ms\n", 
+ 						instance, OSTimeNow() - time);
+     }
+@@ -2817,7 +2831,7 @@ Slot::loadCACCert(CKYByte instance)
+ 	    shmem.setVersion(SHMEM_VERSION);
+ 	    shmem.setDataVersion(dataVersion);
+ 	} else {
+-	    status = readCACCertificateFirst(&rawCert, &nextSize, false);
++	    status = readCACCertificateFirst(&rawCert, &nextSize);
+ 	
+ 	    if ((status != CKYSUCCESS) || (CKYBuffer_Size(&rawCert) <= 1)) {
+ 		/* CAC only requires the Certificate in pki '0' */
+@@ -3176,6 +3190,9 @@ Slot::isLoggedIn()
+ 	}
+ 	return nonceValid;
+     }
++    if (!needLogin) {
++	return true;
++    }
+     return loggedIn;
+ }
+ 
+diff -up ./src/coolkey/slot.h.contactless ./src/coolkey/slot.h
+--- ./src/coolkey/slot.h.contactless	2015-02-27 17:30:53.732264744 -0800
++++ ./src/coolkey/slot.h	2015-02-27 17:30:53.751264506 -0800
+@@ -348,6 +348,7 @@ class Slot {
+     bool mCACLocalLogin;
+     int pivContainer;
+     int pivKey;
++    bool pivContactless;
+     bool mECC;
+     //enum { RW_SESSION_HANDLE = 1, RO_SESSION_HANDLE = 2 };
+ 
+@@ -414,8 +415,7 @@ class Slot {
+     list<ListObjectInfo> fetchSeparateObjects();
+ 
+     CKYStatus getCACAid();
+-    CKYStatus readCACCertificateFirst(CKYBuffer *cert, CKYSize *nextSize,
+-                              bool throwException);
++    CKYStatus readCACCertificateFirst(CKYBuffer *cert, CKYSize *nextSize);
+     CKYStatus readCACCertificateAppend(CKYBuffer *cert, CKYSize nextSize);
+ 
+     void selectApplet();
