@@ -23,7 +23,7 @@
 
 Name: coolkey
 Version: 1.1.0
-Release: 35%{?dist}
+Release: 37%{?dist}
 Summary: CoolKey PKCS #11 module
 License: LGPLv2
 URL: http://directory.fedora.redhat.com/wiki/CoolKey
@@ -50,6 +50,7 @@ Patch19: coolkey-1.1.0-add-sql.patch
 Patch20: coolkey-1.1.0-noapplet.patch
 Patch21: coolkey-1.1.0-uninit-var.patch
 Patch22: coolkey-1.1.0-contactless.patch
+Patch23: coolkey-1.1.0-alt-cac.patch
 
 Group: System Environment/Libraries
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -100,6 +101,7 @@ Linux Driver support to access the CoolKey applet.
 %patch20 -b .noapplet
 %patch21 -b .uninit-var
 %patch22 -b .contactless
+%patch23 -b .alt_cac
 
 %build
 autoconf
@@ -145,7 +147,7 @@ fi
 %{_libdir}/pkcs11/libcoolkeypk11.so
 %{_libdir}/libckyapplet.so.1
 %{_libdir}/libckyapplet.so.1.0.0
-/var/cache/coolkey
+%attr(1777,root,root) /var/cache/coolkey
 
 %files devel
 %defattr(-,root,root,-)
@@ -155,6 +157,15 @@ fi
 
 
 %changelog
+* Tue Jan 19 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-37
+- Make sure the /var/cache/coolkey directory has the correct permissions in
+  the spec file.
+
+* Tue Jan 19 2016 Bob Relyea <rrelyea@redhat.com> - 1.1.0-36
+- Recognize up to 10 certs and keys on PIV and CAC cards.
+- Allow cards to have no cert in slot '0'.
+- Allow cards to have ECC and RSA certs and keys
+
 * Wed Apr 8 2015 Bob Relyea <rrelyea@redhat.com> - 1.1.0-35
 - Fix typo the broke ESC phone home.
 
